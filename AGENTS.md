@@ -5,7 +5,7 @@ CLI tool: YouTube / Spotify URL → audio file (MP3/FLAC/M4A).
 ## Run
 
 ```bash
-pip install -r requirements.txt   # yt-dlp, mutagen, rich, spotdl
+pip install -r requirements.txt   # yt-dlp, mutagen, PySide6, spotdl
 python3 main.py
 ```
 
@@ -15,7 +15,7 @@ Requires **ffmpeg** on `PATH` (yt-dlp uses `FFmpegExtractAudio`).
 
 | File | Role |
 |---|---|
-| `main.py` | CLI entrypoint, Rich TUI (menu, progress bars, parallel downloads) |
+| `main.py` | Qt (PySide6) GUI entrypoint |
 | `downloader.py` | yt-dlp wrapper: best audio, post-process with FFmpeg, embed thumbnail + metadata |
 | `spotify.py` | spotdl wrapper: fetch Spotify metadata, YouTube Music match, mutagen tag override |
 

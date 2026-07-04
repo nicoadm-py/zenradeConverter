@@ -15,16 +15,33 @@ def is_spotify_url(url: str) -> bool:
     return "spotify.com" in u or u.startswith("spotify:")
 
 
+_SPOTDL_ERR = (
+    "spotdl non installato o incompatibile. "
+    "Esegui: pip install 'spotdl>=4.5.0'  (Python 3.10–3.12 consigliato)"
+)
+
+
 @lru_cache(maxsize=1)
 def _client():
-    # Import pesante e lento: lo facciamo solo quando serve davvero.
-    from spotdl import Spotdl
-    from spotdl.utils.config import DEFAULT_CONFIG
+    try:
+        from spotdl import Spotdl
+        from spotdl.utils.config import DEFAULT_CONFIG
+    except ImportError as e:
+        raise ImportError(_SPOTDL_ERR) from e
 
     logging.getLogger("spotdl").setLevel(logging.CRITICAL)
+
+    try:
+        cid = DEFAULT_CONFIG["client_id"]
+        csec = DEFAULT_CONFIG["client_secret"]
+    except (KeyError, TypeError) as e:
+        raise RuntimeError(
+            f"spotdl API cambiata (versione {getattr(Spotdl, '__version__', '?')}): {e}"
+        ) from e
+
     return Spotdl(
-        client_id=DEFAULT_CONFIG["client_id"],
-        client_secret=DEFAULT_CONFIG["client_secret"],
+        client_id=cid,
+        client_secret=csec,
         downloader_settings={"print_errors": False},
     )
 

@@ -20,7 +20,7 @@ A PySide6 desktop GUI that downloads audio from YouTube and Spotify links. Spoti
 
 ## Requirements
 
-- Python **3.10+**
+- Python **3.10–3.12** (recommended: 3.11 or 3.12; 3.13+ may lack prebuilt wheels for some dependencies)
 - **ffmpeg** on `PATH` (used by yt-dlp for audio extraction and re-encoding)
 
 ---
@@ -99,7 +99,7 @@ Interfaccia grafica PySide6 per scaricare audio da YouTube e Spotify. Le tracce 
 
 ### Prerequisiti
 
-- Python 3.10+
+- Python 3.10–3.12 (consigliato: 3.11 o 3.12; 3.13+ può mancare di prebuilt wheel per alcune dipendenze)
 - **ffmpeg** su `PATH`
 
 ### Installazione

@@ -1,6 +1,5 @@
 from pathlib import Path
 
-import yt_dlp
 from PySide6.QtCore import QThread, Signal
 
 import downloader
