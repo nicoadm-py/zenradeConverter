@@ -1,8 +1,8 @@
 from pathlib import Path
 
 from PySide6.QtCore import QThread, Signal
-import downloader
-import spotify
+from . import downloader
+from . import spotify
 
 
 class CancelledError(Exception):
