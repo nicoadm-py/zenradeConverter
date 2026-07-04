@@ -1,23 +1,23 @@
 # zenradeConverter
 
-CLI tool: YouTube / Spotify URL → audio file (MP3/FLAC/M4A).
+YouTube / Spotify URL → audio file (MP3/FLAC/M4A).
 
 ## Run
 
 ```bash
-pip install -r requirements.txt   # yt-dlp, mutagen, PySide6, spotdl
-python3 main.py
+python3 main.py          # .venv already present, skip pip install
 ```
-
-Requires **ffmpeg** on `PATH` (yt-dlp uses `FFmpegExtractAudio`).
+Requires **ffmpeg** on `PATH` — yt-dlp uses `FFmpegExtractAudio` post-processor.
+Python 3.13+ may lack prebuilt wheels for `spotdl` dependencies (stick to 3.10–3.12 if issues arise).
 
 ## Architecture
 
 | File | Role |
 |---|---|
-| `main.py` | Qt (PySide6) GUI entrypoint |
-| `downloader.py` | yt-dlp wrapper: best audio, post-process with FFmpeg, embed thumbnail + metadata |
+| `main.py` | Qt (PySide6) GUI, queue, parallel dispatch |
+| `downloader.py` | yt-dlp wrapper: best audio, FFmpeg post-process, embed thumbnail + metadata |
 | `spotify.py` | spotdl wrapper: fetch Spotify metadata, YouTube Music match, mutagen tag override |
+| `workers.py` | `QThread` subclasses — non-blocking download and Spotify pipeline |
 
 Flow: `main.py` → `spotify.fetch_tracks()` / `downloader.download()` → yt-dlp → FFmpeg → mutagen tag patch.
 
