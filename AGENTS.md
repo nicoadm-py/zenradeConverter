@@ -9,7 +9,7 @@ python3 main.py                              # GUI (legacy entrypoint)
 python3 -m zenradeconverter                  # GUI (default)
 python3 -m zenradeconverter --cli URL        # CLI
 ```
-Requires **ffmpeg** on `PATH` — yt-dlp uses `FFmpegExtractAudio` post-processor.
+**ffmpeg is auto-provisioned** at startup: if missing from `PATH`, the app downloads it from ffbinaries.com into `./bin/` and passes the path to yt-dlp via `ffmpeg_location`. On arm64 macOS the downloaded Intel build runs via Rosetta 2.
 Python 3.13+ may lack prebuilt wheels for `spotdl` dependencies (stick to 3.10–3.12 if issues arise).
 
 ## Architecture
@@ -22,8 +22,9 @@ Python 3.13+ may lack prebuilt wheels for `spotdl` dependencies (stick to 3.10�
 | `zenradeconverter/downloader.py` | yt-dlp wrapper: best audio, FFmpeg post-process, embed thumbnail + metadata |
 | `zenradeconverter/spotify.py` | spotdl wrapper: fetch metadata, YouTube Music match (batch parallelo via `youtube_urls()`), mutagen tag override |
 | `zenradeconverter/workers.py` | `QThread` subclasses — non-blocking download and Spotify pipeline |
+| `zenradeconverter/ffmpeg_setup.py` | auto-detect / download ffmpeg via ffbinaries.com API (cached in `./bin/`) |
 
-Flow: `main.py` → `zenradeconverter.gui` → `spotify.fetch_tracks()` → `spotify.youtube_urls()` (parallelo) / `downloader.download()` → yt-dlp (`concurrent_fragments=4`, `retries=10`) → FFmpeg → mutagen tag patch.
+Flow: `main.py`/`__main__` → `ffmpeg_setup.ensure_ffmpeg()` (PATH → `./bin` cache → download) → `zenradeconverter.gui` → `spotify.fetch_tracks()` → `spotify.youtube_urls()` (parallelo) / `downloader.download(ffmpeg_location=...)` → yt-dlp (`concurrent_fragments=4`, `retries=10`) → FFmpeg → mutagen tag patch.
 
 ## Key quirks
 

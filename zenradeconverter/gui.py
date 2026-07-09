@@ -38,6 +38,7 @@ class DownloadJob:
     filename: str | None = None
     metadata: dict | None = None
     info: dict | None = None
+    ffmpeg_location: str | None = None
 
 
 def _format_bytes(b: int) -> str:
@@ -141,11 +142,12 @@ class DownloadRow(QFrame):
 
 
 class MainWindow(QMainWindow):
-    def __init__(self):
+    def __init__(self, ffmpeg_location: str | None = None):
         super().__init__()
         self._output_dir = DEFAULT_OUTPUT
         self._active = 0
         self._queue: list[DownloadJob] = []
+        self._ffmpeg_location = ffmpeg_location
         self._rows: dict[str, DownloadRow] = {}
         self._worker_for_row: dict[str, DownloadWorker] = {}
         self._setup_ui()
@@ -247,6 +249,7 @@ class MainWindow(QMainWindow):
                 filename=job.filename,
                 metadata=job.metadata,
                 info=job.info,
+                ffmpeg_location=job.ffmpeg_location or self._ffmpeg_location,
             )
             worker.progress.connect(self._on_progress)
             worker.status.connect(self._on_download_status)
@@ -306,14 +309,14 @@ class MainWindow(QMainWindow):
         self._status.showMessage("Recupero info...")
 
         try:
-            info = downloader.get_info(url)
+            info = downloader.get_info(url, ffmpeg_location=self._ffmpeg_location)
         except Exception as e:
             self._status.showMessage(f"Errore: {e}")
             self._dl_btn.setEnabled(True)
             return
 
         title = info.get("title", "Sconosciuto")
-        self._enqueue(DownloadJob(title, url, fmt, output_dir, info=info))
+        self._enqueue(DownloadJob(title, url, fmt, output_dir, ffmpeg_location=self._ffmpeg_location))
         self._dl_btn.setEnabled(True)
         self._update_status_bar()
 
@@ -358,7 +361,10 @@ class MainWindow(QMainWindow):
             final_dir.mkdir(parents=True, exist_ok=True)
 
         for _song, yt_url, label, metadata in results:
-            self._enqueue(DownloadJob(label, yt_url, self._spotify_fmt, final_dir, filename=label, metadata=metadata))
+            self._enqueue(DownloadJob(
+                label, yt_url, self._spotify_fmt, final_dir,
+                filename=label, metadata=metadata, ffmpeg_location=self._ffmpeg_location
+            ))
 
         self._update_status_bar()
 
@@ -378,11 +384,11 @@ class MainWindow(QMainWindow):
         self._update_status_bar()
 
 
-def run_gui():
+def run_gui(ffmpeg_location: str | None = None):
     app = QApplication(sys.argv)
     app.setApplicationName("zenradeConverter")
 
-    window = MainWindow()
+    window = MainWindow(ffmpeg_location=ffmpeg_location)
     window.show()
 
     sys.exit(app.exec())
