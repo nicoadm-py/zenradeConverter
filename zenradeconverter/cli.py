@@ -1,5 +1,4 @@
 import argparse
-import sys
 from pathlib import Path
 
 from . import downloader
@@ -8,25 +7,26 @@ from . import spotify
 
 def _download_url(url: str, output_dir: Path, fmt: str) -> None:
     if spotify.is_spotify_url(url):
-        print(f"[*] Spotify URL: recupero tracce...")
+        print("[*] Spotify URL: recupero tracce...")
         songs = spotify.fetch_tracks(url)
         if not songs:
             print("[!] Nessuna traccia trovata.")
             return
-        for song in songs:
-            artist = ", ".join(song.artists) if song.artists else song.artist
-            label = f"{artist} - {song.name}"
-            print(f"[*] Cerco '{label}' su YouTube Music...")
-            yt_url = spotify.youtube_url(song)
-            if not yt_url:
-                print(f"[!] Nessun match per '{label}'")
+
+        print(f"[*] {len(songs)} tracce — cerco match su YouTube Music in parallelo...")
+        for match in spotify.youtube_urls(songs):
+            if match.error:
+                print(f"[!] Errore ricerca '{match.label}': {match.error}")
                 continue
-            metadata = spotify.track_metadata(song)
-            print(f"[*] Download: {label}")
-            downloader.download(yt_url, output_dir, fmt, metadata=metadata, filename=label)
-            print(f"[✓] {label}")
+            if not match.yt_url:
+                print(f"[!] Nessun match per '{match.label}'")
+                continue
+            metadata = spotify.track_metadata(match.song)
+            print(f"[*] Download: {match.label}")
+            downloader.download(match.yt_url, output_dir, fmt, metadata=metadata, filename=match.label)
+            print(f"[✓] {match.label}")
     else:
-        print(f"[*] YouTube: recupero info...")
+        print("[*] YouTube: recupero info...")
         info = downloader.get_info(url)
         title = info.get("title", "Sconosciuto")
         print(f"[*] Download: {title}")

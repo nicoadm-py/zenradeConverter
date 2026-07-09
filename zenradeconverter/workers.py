@@ -1,8 +1,9 @@
+import re
 from pathlib import Path
 
 from PySide6.QtCore import QThread, Signal
-from . import downloader
-from . import spotify
+
+from . import downloader, spotify
 
 
 class CancelledError(Exception):
@@ -11,7 +12,7 @@ class CancelledError(Exception):
 
 class DownloadWorker(QThread):
     progress = Signal(str, int, int)  # label, downloaded, total
-    status = Signal(str, str, str)  # label, status (ok/error/cancelled), detail
+    status = Signal(str, str, str)    # label, status (ok/error/cancelled), detail
 
     def __init__(
         self,
@@ -48,9 +49,7 @@ class DownloadWorker(QThread):
 
         try:
             downloader.download(
-                self._url,
-                self._output_dir,
-                self._fmt,
+                self._url, self._output_dir, self._fmt,
                 progress_hook=progress_hook,
                 filename=self._filename,
                 metadata=self._metadata,
@@ -65,13 +64,14 @@ class DownloadWorker(QThread):
 
 
 class SpotifyPipelineWorker(QThread):
-    tracks_found = Signal(list)  # list of spotdl Song objects
-    search_progress = Signal(str, str, str)  # label, status (matched/skip/error), detail
-    searches_done = Signal(list)  # list of (song, yt_url, label, metadata dict)
+    tracks_found = Signal(list)               # list di spotdl Song
+    search_progress = Signal(str, str, str)   # label, status (matched/skip/error), detail
+    searches_done = Signal(list)              # list di (song, yt_url, label, metadata)
 
     def __init__(self, url: str):
         super().__init__()
         self._url = url
+        self.collection_folder = ""
 
     def run(self):
         try:
@@ -86,23 +86,22 @@ class SpotifyPipelineWorker(QThread):
 
         self.tracks_found.emit(songs)
 
+        if len(songs) > 1:
+            first = songs[0].album_name
+            same = all(s.album_name == first for s in songs[1:])
+            raw = first if same else (songs[0].list_name or "Raccolta")
+            self.collection_folder = re.sub(r'[/\\:*?"<>|]', "-", raw.strip())[:100]
+
+        # Ricerca match YouTube in parallelo (ThreadPool dentro spotify.youtube_urls)
         results = []
-        for song in songs:
-            artist = ", ".join(song.artists) if song.artists else song.artist
-            label = f"{artist} - {song.name}"
-
-            try:
-                yt = spotify.youtube_url(song)
-            except Exception as e:
-                self.search_progress.emit(label, "error", f"ricerca YouTube: {e}")
-                continue
-
-            if not yt:
-                self.search_progress.emit(label, "skip", "nessun match YouTube")
-                continue
-
-            metadata = spotify.track_metadata(song)
-            results.append((song, yt, label, metadata))
-            self.search_progress.emit(label, "matched", yt)
+        for match in spotify.youtube_urls(songs):
+            if match.error:
+                self.search_progress.emit(match.label, "error", f"ricerca YouTube: {match.error}")
+            elif not match.yt_url:
+                self.search_progress.emit(match.label, "skip", "nessun match YouTube")
+            else:
+                metadata = spotify.track_metadata(match.song)
+                results.append((match.song, match.yt_url, match.label, metadata))
+                self.search_progress.emit(match.label, "matched", match.yt_url)
 
         self.searches_done.emit(results)

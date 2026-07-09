@@ -1,4 +1,5 @@
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
 from PySide6.QtCore import Signal
@@ -20,13 +21,23 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from . import downloader
-from . import spotify
+from . import downloader, spotify
 from .workers import DownloadWorker, SpotifyPipelineWorker
 
 MAX_WORKERS = 4
 DEFAULT_OUTPUT = Path.home() / "Music" / "zenradeConverter"
 FORMATS = ["mp3", "flac", "m4a"]
+
+
+@dataclass
+class DownloadJob:
+    label: str
+    url: str
+    fmt: str
+    directory: Path
+    filename: str | None = None
+    metadata: dict | None = None
+    info: dict | None = None
 
 
 def _format_bytes(b: int) -> str:
@@ -134,7 +145,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self._output_dir = DEFAULT_OUTPUT
         self._active = 0
-        self._queue: list[dict] = []
+        self._queue: list[DownloadJob] = []
         self._rows: dict[str, DownloadRow] = {}
         self._worker_for_row: dict[str, DownloadWorker] = {}
         self._setup_ui()
@@ -218,28 +229,24 @@ class MainWindow(QMainWindow):
         self._list_layout.insertWidget(self._list_layout.count() - 1, row)
         return row
 
-    def _enqueue(self, label: str, url: str, filename: str | None, metadata: dict | None, fmt: str, directory: Path, info: dict | None = None) -> DownloadRow:
-        row = self._add_row(label)
-        self._rows[label] = row
-        self._queue.append({
-            "label": label, "url": url, "filename": filename,
-            "metadata": metadata, "fmt": fmt, "dir": directory,
-            "info": info,
-        })
+    def _enqueue(self, job: DownloadJob) -> DownloadRow:
+        row = self._add_row(job.label)
+        self._rows[job.label] = row
+        self._queue.append(job)
         self._process_queue()
         return row
 
     def _process_queue(self):
         while self._active < MAX_WORKERS and self._queue:
-            item = self._queue.pop(0)
-            row = self._rows.get(item["label"])
+            job = self._queue.pop(0)
+            row = self._rows.get(job.label)
 
             worker = DownloadWorker(
-                item["url"], item["dir"], item["fmt"],
-                label=item["label"],
-                filename=item["filename"],
-                metadata=item["metadata"],
-                info=item.get("info"),
+                job.url, job.directory, job.fmt,
+                label=job.label,
+                filename=job.filename,
+                metadata=job.metadata,
+                info=job.info,
             )
             worker.progress.connect(self._on_progress)
             worker.status.connect(self._on_download_status)
@@ -249,7 +256,7 @@ class MainWindow(QMainWindow):
                 row.cancelled.connect(worker.requestInterruption)
                 row.set_status("downloading")
 
-            self._worker_for_row[item["label"]] = worker
+            self._worker_for_row[job.label] = worker
             self._active += 1
             worker.start()
 
@@ -306,7 +313,7 @@ class MainWindow(QMainWindow):
             return
 
         title = info.get("title", "Sconosciuto")
-        self._enqueue(title, url, None, None, fmt, output_dir, info=info)
+        self._enqueue(DownloadJob(title, url, fmt, output_dir, info=info))
         self._dl_btn.setEnabled(True)
         self._update_status_bar()
 
@@ -345,8 +352,13 @@ class MainWindow(QMainWindow):
     def _on_searches_done(self, results: list):
         self._dl_btn.setEnabled(True)
 
+        final_dir = self._spotify_dir
+        if self._pipeline.collection_folder:
+            final_dir = self._spotify_dir / self._pipeline.collection_folder
+            final_dir.mkdir(parents=True, exist_ok=True)
+
         for _song, yt_url, label, metadata in results:
-            self._enqueue(label, yt_url, label, metadata, self._spotify_fmt, self._spotify_dir)
+            self._enqueue(DownloadJob(label, yt_url, self._spotify_fmt, final_dir, filename=label, metadata=metadata))
 
         self._update_status_bar()
 
