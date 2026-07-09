@@ -23,6 +23,7 @@ class DownloadWorker(QThread):
         filename: str | None = None,
         metadata: dict | None = None,
         info: dict | None = None,
+        ffmpeg_location: str | None = None,
     ):
         super().__init__()
         self._url = url
@@ -32,6 +33,7 @@ class DownloadWorker(QThread):
         self._filename = filename
         self._metadata = metadata
         self._info = info
+        self._ffmpeg_location = ffmpeg_location
 
     def run(self):
         worker = self
@@ -54,6 +56,7 @@ class DownloadWorker(QThread):
                 filename=self._filename,
                 metadata=self._metadata,
                 info=self._info,
+                ffmpeg_location=self._ffmpeg_location,
             )
         except CancelledError:
             self.status.emit(self._label, "cancelled", "annullato")

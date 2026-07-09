@@ -51,6 +51,7 @@ def build_ydl_opts(
     fmt: str = "mp3",
     filename: str | None = None,
     progress_hook=None,
+    ffmpeg_location: str | None = None,
 ) -> dict:
     """Costruisce le opzioni yt-dlp per il download + post-processing."""
     postprocessors = [
@@ -78,6 +79,8 @@ def build_ydl_opts(
         "retries": 10,
         "fragment_retries": 10,
     }
+    if ffmpeg_location:
+        opts["ffmpeg_location"] = ffmpeg_location
     if progress_hook:
         opts["progress_hooks"] = [progress_hook]
     return opts
@@ -136,8 +139,11 @@ def _apply_tags(path: Path, metadata: dict) -> None:
         _embed_cover(path, cover_url)
 
 
-def get_info(url: str) -> dict:
-    with yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True}) as ydl:
+def get_info(url: str, ffmpeg_location: str | None = None) -> dict:
+    opts = {"quiet": True, "no_warnings": True}
+    if ffmpeg_location:
+        opts["ffmpeg_location"] = ffmpeg_location
+    with yt_dlp.YoutubeDL(opts) as ydl:
         return ydl.extract_info(url, download=False)
 
 
@@ -149,8 +155,11 @@ def download(
     filename: str | None = None,
     metadata: dict | None = None,
     info: dict | None = None,
+    ffmpeg_location: str | None = None,
 ) -> str:
-    opts = build_ydl_opts(output_dir, fmt, filename=filename, progress_hook=progress_hook)
+    opts = build_ydl_opts(
+        output_dir, fmt, filename=filename, progress_hook=progress_hook, ffmpeg_location=ffmpeg_location
+    )
 
     with yt_dlp.YoutubeDL(opts) as ydl:
         if info:

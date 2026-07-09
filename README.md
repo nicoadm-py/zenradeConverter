@@ -21,7 +21,7 @@ A PySide6 desktop GUI that downloads audio from YouTube and Spotify links. Spoti
 ## Requirements
 
 - Python **3.10–3.12** (recommended: 3.11 or 3.12; 3.13+ may lack prebuilt wheels for some dependencies)
-- **ffmpeg** on `PATH` (used by yt-dlp for audio extraction and re-encoding)
+- **ffmpeg**: auto-provisioned at startup. If `ffmpeg` isn't found on `PATH`, the app downloads the correct build for your platform (Windows/macOS/Linux x64) from [ffbinaries.com](https://ffbinaries.com) into a local `./bin/` folder and tells yt-dlp to use it. On **Apple Silicon (arm64)**, since ffbinaries publishes Intel builds only, the downloaded binary runs via Rosetta 2 — if Rosetta is missing the app prints the install command (`softwareupdate --install-rosetta`). You can always bypass auto-download by installing ffmpeg yourself (`brew install ffmpeg`, etc.).
 
 ---
 
@@ -68,15 +68,14 @@ Spotify does not provide downloadable audio (DRM). The tool reads metadata from 
 | `downloader.py` | `yt-dlp` wrapper — best audio extraction, FFmpeg post-processing, mutagen tag writer |
 | `spotify.py` | `spotdl` wrapper — fetch Spotify metadata, YouTube Music search |
 | `workers.py` | `QThread` subclasses — non-blocking download and Spotify pipeline |
+| `ffmpeg_setup.py` | detects / auto-downloads ffmpeg via ffbinaries.com API (cached in `./bin/`) |
 
 ---
 
 ## Limitations
 
-- **Spotify rate limiting** — uses `spotdl`'s default public `client_id` / `client_secret`. Rate-limited and not suitable for production.
-- **Audio only** — no video download.
-- **Requires internet** and **ffmpeg** on `PATH`.
 - **No tests, no CI** — this is a personal utility tool.
+- **Apple Silicon (arm64)** — auto-downloaded ffmpeg is an Intel build via Rosetta 2; install ffmpeg via `brew` to bypass.
 
 ---
 
@@ -100,7 +99,7 @@ Interfaccia grafica PySide6 per scaricare audio da YouTube e Spotify. Le tracce 
 ### Prerequisiti
 
 - Python 3.10–3.12 (consigliato: 3.11 o 3.12; 3.13+ può mancare di prebuilt wheel per alcune dipendenze)
-- **ffmpeg** su `PATH`
+- **ffmpeg**: provisionato automaticamente all'avvio. Se non è su `PATH`, l'app scarica da [ffbinaries.com](https://ffbinaries.com) il binario corretto per la piattaforma (Windows/macOS/Linux x64) in `./bin/` e yt-dlp lo usa. Su **Apple Silicon (arm64)** ffbinaries pubblica solo build Intel → il binario gira via Rosetta 2; se Rosetta manca, viene mostrato il comando per installarlo (`softwareupdate --install-rosetta`). Puoi sempre installare ffmpeg a mano (`brew install ffmpeg`) e l'app userà quello.
 
 ### Installazione
 
@@ -129,9 +128,9 @@ python3 main.py
 | `downloader.py` | wrapper `yt-dlp` — estrazione audio, FFmpeg, scrittura tag |
 | `spotify.py` | wrapper `spotdl` — metadati Spotify, ricerca YouTube Music |
 | `workers.py` | sottoclassi `QThread` — download e pipeline Spotify non bloccanti |
+| `ffmpeg_setup.py` | rileva / scarica ffmpeg via API ffbinaries.com (cached in `./bin/`) |
 
 ### Limitazioni
 
-- **Rate limit Spotify** — usa il `client_id` pubblico di default di `spotdl`, non adatto alla produzione.
-- **Solo audio** — niente video.
-- Richiede **ffmpeg** su `PATH` e connessione internet.
+- Richiede connessione internet.
+- **Apple Silicon (arm64)** — ffmpeg scaricato è una build Intel via Rosetta 2; installa ffmpeg con `brew` per bypassare.
