@@ -78,6 +78,10 @@ def build_ydl_opts(
         "concurrent_fragments": 4,
         "retries": 10,
         "fragment_retries": 10,
+        # YouTube: il client web di default viene bloccato con 403 (SABR-only
+        # streaming experiment, vedi yt-dlp issue #12482). tv_embedded espone
+        # formati audio-only e bypassa il 403.
+        "extractor_args": {"youtube": {"player_client": ["tv_embedded"]}},
     }
     if ffmpeg_location:
         opts["ffmpeg_location"] = ffmpeg_location
@@ -139,8 +143,15 @@ def _apply_tags(path: Path, metadata: dict) -> None:
         _embed_cover(path, cover_url)
 
 
+_YT_EXTRACTOR_ARGS = {"youtube": {"player_client": ["tv_embedded"]}}
+
+
 def get_info(url: str, ffmpeg_location: str | None = None) -> dict:
-    opts = {"quiet": True, "no_warnings": True}
+    opts: dict = {
+        "quiet": True,
+        "no_warnings": True,
+        "extractor_args": _YT_EXTRACTOR_ARGS,
+    }
     if ffmpeg_location:
         opts["ffmpeg_location"] = ffmpeg_location
     with yt_dlp.YoutubeDL(opts) as ydl:
@@ -157,15 +168,20 @@ def download(
     info: dict | None = None,
     ffmpeg_location: str | None = None,
 ) -> str:
+    """Scarica audio da `url`.
+
+    `info` (se passato) viene usato SOLO come hint iniziale per il titolo; il
+    download vero viene sempre fatto via `extract_info(url, download=True)`
+    per garantire che `extractor_args` (player_client etc.) vengano onorati.
+    yt-dlp non riapplica infatti extractor_args a URL già cached, quindi il
+    riuso di info pre-estratte porta a 403 sui format streaming di YouTube.
+    """
     opts = build_ydl_opts(
         output_dir, fmt, filename=filename, progress_hook=progress_hook, ffmpeg_location=ffmpeg_location
     )
 
     with yt_dlp.YoutubeDL(opts) as ydl:
-        if info:
-            info = ydl.process_ie_result(info, download=True)
-        else:
-            info = ydl.extract_info(url, download=True)
+        info = ydl.extract_info(url, download=True)
         title = info.get("title", "unknown")
 
         if metadata:

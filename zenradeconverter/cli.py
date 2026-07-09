@@ -33,7 +33,7 @@ def _download_url(url: str, output_dir: Path, fmt: str, ffmpeg_location: str | N
         info = downloader.get_info(url, ffmpeg_location=ffmpeg_location)
         title = info.get("title", "Sconosciuto")
         print(f"[*] Download: {title}")
-        downloader.download(url, output_dir, fmt, info=info, ffmpeg_location=ffmpeg_location)
+        downloader.download(url, output_dir, fmt, ffmpeg_location=ffmpeg_location)
         print(f"[✓] {title}")
 
 

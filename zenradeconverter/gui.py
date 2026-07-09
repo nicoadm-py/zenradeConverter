@@ -316,7 +316,7 @@ class MainWindow(QMainWindow):
             return
 
         title = info.get("title", "Sconosciuto")
-        self._enqueue(DownloadJob(title, url, fmt, output_dir, info=info, ffmpeg_location=self._ffmpeg_location))
+        self._enqueue(DownloadJob(title, url, fmt, output_dir, ffmpeg_location=self._ffmpeg_location))
         self._dl_btn.setEnabled(True)
         self._update_status_bar()
 
