@@ -22,7 +22,11 @@ from PySide6.QtWidgets import (
 )
 
 from . import downloader, spotify
-from .workers import DownloadWorker, SpotifyPipelineWorker
+from .workers import (
+    DownloadWorker,
+    SpotifyPipelineWorker,
+    YouTubeInfoWorker,
+)
 
 MAX_WORKERS = 4
 DEFAULT_OUTPUT = Path.home() / "Music" / "zenradeConverter"
@@ -31,13 +35,13 @@ FORMATS = ["mp3", "flac", "m4a"]
 
 @dataclass
 class DownloadJob:
+    row_id: int
     label: str
     url: str
     fmt: str
     directory: Path
     filename: str | None = None
     metadata: dict | None = None
-    info: dict | None = None
     ffmpeg_location: str | None = None
 
 
@@ -148,8 +152,17 @@ class MainWindow(QMainWindow):
         self._active = 0
         self._queue: list[DownloadJob] = []
         self._ffmpeg_location = ffmpeg_location
-        self._rows: dict[str, DownloadRow] = {}
-        self._worker_for_row: dict[str, DownloadWorker] = {}
+        self._rows: dict[int, DownloadRow] = {}
+        self._worker_for_row: dict[int, DownloadWorker] = {}
+        self._next_row_id = 0
+        self._matched_count = 0
+        # Pipeline/worker refs: manteniamo un riferimento fortissimo per evitare
+        # che Qt faccia garbage-collect del QThread prima del termine.
+        self._info_worker: YouTubeInfoWorker | None = None
+        self._pipeline: SpotifyPipelineWorker | None = None
+        self._spotify_dir: Path | None = None
+        self._spotify_fmt: str = "mp3"
+        self._yt_pending: tuple[str, Path, str] | None = None  # (url, dir, fmt)
         self._setup_ui()
 
     def _setup_ui(self):
@@ -231,9 +244,14 @@ class MainWindow(QMainWindow):
         self._list_layout.insertWidget(self._list_layout.count() - 1, row)
         return row
 
+    def _next_row_id(self) -> int:
+        rid = self._next_row_id
+        self._next_row_id += 1
+        return rid
+
     def _enqueue(self, job: DownloadJob) -> DownloadRow:
         row = self._add_row(job.label)
-        self._rows[job.label] = row
+        self._rows[job.row_id] = row
         self._queue.append(job)
         self._process_queue()
         return row
@@ -241,25 +259,24 @@ class MainWindow(QMainWindow):
     def _process_queue(self):
         while self._active < MAX_WORKERS and self._queue:
             job = self._queue.pop(0)
-            row = self._rows.get(job.label)
+            row = self._rows.get(job.row_id)
 
             worker = DownloadWorker(
-                job.url, job.directory, job.fmt,
+                job.row_id, job.url, job.directory, job.fmt,
                 label=job.label,
                 filename=job.filename,
                 metadata=job.metadata,
-                info=job.info,
                 ffmpeg_location=job.ffmpeg_location or self._ffmpeg_location,
             )
             worker.progress.connect(self._on_progress)
             worker.status.connect(self._on_download_status)
-            worker.finished.connect(self._on_worker_done)
+            worker.finished.connect(lambda rid=job.row_id: self._on_worker_done(rid))
 
             if row:
                 row.cancelled.connect(worker.requestInterruption)
                 row.set_status("downloading")
 
-            self._worker_for_row[job.label] = worker
+            self._worker_for_row[job.row_id] = worker
             self._active += 1
             worker.start()
 
@@ -286,7 +303,13 @@ class MainWindow(QMainWindow):
     def _on_open_dir(self):
         self._output_dir.mkdir(parents=True, exist_ok=True)
         import subprocess
-        subprocess.Popen(["open", str(self._output_dir)])
+        if sys.platform == "win32":
+            cmd = ["explorer", str(self._output_dir)]
+        elif sys.platform == "darwin":
+            cmd = ["open", str(self._output_dir)]
+        else:
+            cmd = ["xdg-open", str(self._output_dir)]
+        subprocess.Popen(cmd)
 
     def _on_download(self):
         url = self._url_input.text().strip()
@@ -305,34 +328,93 @@ class MainWindow(QMainWindow):
             self._start_youtube(url, output_dir, fmt)
 
     def _start_youtube(self, url: str, output_dir: Path, fmt: str):
-        self._dl_btn.setEnabled(False)
-        self._status.showMessage("Recupero info...")
-
-        try:
-            info = downloader.get_info(url, ffmpeg_location=self._ffmpeg_location)
-        except Exception as e:
-            self._status.showMessage(f"Errore: {e}")
-            self._dl_btn.setEnabled(True)
+        # Evita di lanciare una seconda estrazione YouTube mentre una è già
+        # in corso: get_info può durare parecchi secondi su link lenti.
+        if self._info_worker is not None and self._info_worker.isRunning():
+            self._status.showMessage("Recupero info già in corso...")
             return
 
+        self._dl_btn.setEnabled(False)
+        self._status.showMessage("Recupero info...")
+        self._yt_pending = (url, output_dir, fmt)
+
+        worker = YouTubeInfoWorker(url, ffmpeg_location=self._ffmpeg_location)
+        worker.info_ready.connect(self._on_yt_info_ready)
+        worker.playlist_ready.connect(self._on_yt_playlist_ready)
+        worker.error.connect(self._on_yt_info_error)
+        worker.finished.connect(lambda: self._on_info_worker_finished())
+        self._info_worker = worker
+        worker.start()
+
+    def _on_info_worker_finished(self):
+        # Rilascia il riferimento al QThread (	deferred-delete di Qt)
+        self._info_worker = None
+
+    def _on_yt_info_ready(self, info: dict):
+        if self._yt_pending is None:
+            return
+        url, output_dir, fmt = self._yt_pending
+        self._yt_pending = None
+
         title = info.get("title", "Sconosciuto")
-        self._enqueue(DownloadJob(title, url, fmt, output_dir, ffmpeg_location=self._ffmpeg_location))
         self._dl_btn.setEnabled(True)
+        rid = self._next_row_id()
+        self._enqueue(DownloadJob(
+            rid, title, url, fmt, output_dir,
+            filename=title, ffmpeg_location=self._ffmpeg_location,
+        ))
         self._update_status_bar()
 
+    def _on_yt_playlist_ready(self, entries: list):
+        if self._yt_pending is None:
+            return
+        url, output_dir, fmt = self._yt_pending
+        self._yt_pending = None
+
+        self._dl_btn.setEnabled(True)
+        if not entries:
+            self._status.showMessage("Playlist vuota o nessun entry valido.")
+            return
+
+        self._status.showMessage(f"Playlist: {len(entries)} video in coda...")
+        for title, e_url in entries:
+            rid = self._next_row_id()
+            self._enqueue(DownloadJob(
+                rid, title, e_url, fmt, output_dir,
+                filename=title, ffmpeg_location=self._ffmpeg_location,
+            ))
+        self._update_status_bar()
+
+    def _on_yt_info_error(self, detail: str):
+        self._yt_pending = None
+        self._status.showMessage(f"Errore: {detail}")
+        self._dl_btn.setEnabled(True)
+
     def _start_spotify(self, url: str, output_dir: Path, fmt: str):
+        # Guard: una pipeline Spotify già in volo non può essere interrotta né
+        # sostituita: una seconda invocazione perderebbe il riferimento al
+        # QThread attivo (leak + impossibilità di cancellare).
+        if self._pipeline is not None and self._pipeline.isRunning():
+            self._status.showMessage("Una pipeline Spotify è già in corso.")
+            return
+
         self._dl_btn.setEnabled(False)
         self._status.showMessage("Recupero tracce da Spotify...")
 
         self._spotify_fmt = fmt
         self._spotify_dir = output_dir
+        self._matched_count = 0
 
         self._pipeline = SpotifyPipelineWorker(url)
         self._pipeline.tracks_found.connect(self._on_tracks_found)
         self._pipeline.search_progress.connect(self._on_search_progress)
         self._pipeline.searches_done.connect(self._on_searches_done)
-        self._pipeline.finished.connect(lambda: None)
+        self._pipeline.finished.connect(self._on_spotify_pipeline_finished)
         self._pipeline.start()
+
+    def _on_spotify_pipeline_finished(self):
+        # Rilascia il riferimento al QThread ( deferred-delete di Qt)
+        self._pipeline = None
 
     def _on_tracks_found(self, songs: list):
         self._status.showMessage(
@@ -341,13 +423,15 @@ class MainWindow(QMainWindow):
 
     def _on_search_progress(self, label: str, status: str, detail: str):
         if status == "matched":
-            self._status.showMessage(
-                f"Match trovati: {len(self._rows) + 1}"
-            )
+            self._matched_count += 1
+            self._status.showMessage(f"Match trovati: {self._matched_count}")
         elif status in ("error", "skip"):
+            # Riga diagnostica per ricerca fallita: usa un row_id unico così
+            # non collide con eventuali omonime nella coda download.
+            rid = self._next_row_id()
             row = self._add_row(label)
             row.set_status(status, detail)
-            self._rows[label] = row
+            self._rows[rid] = row
         elif status == "fetch_error":
             self._status.showMessage(f"Errore Spotify: {detail}")
             self._dl_btn.setEnabled(True)
@@ -356,30 +440,34 @@ class MainWindow(QMainWindow):
         self._dl_btn.setEnabled(True)
 
         final_dir = self._spotify_dir
-        if self._pipeline.collection_folder:
+        if self._pipeline is not None and self._pipeline.collection_folder:
             final_dir = self._spotify_dir / self._pipeline.collection_folder
             final_dir.mkdir(parents=True, exist_ok=True)
 
         for _song, yt_url, label, metadata in results:
+            rid = self._next_row_id()
             self._enqueue(DownloadJob(
-                label, yt_url, self._spotify_fmt, final_dir,
+                rid, label, yt_url, self._spotify_fmt, final_dir,
                 filename=label, metadata=metadata, ffmpeg_location=self._ffmpeg_location
             ))
 
         self._update_status_bar()
 
-    def _on_progress(self, label: str, downloaded: int, total: int):
-        row = self._rows.get(label)
+    def _on_progress(self, row_id: int, downloaded: int, total: int):
+        row = self._rows.get(row_id)
         if row:
             row.set_progress(downloaded, total)
 
-    def _on_download_status(self, label: str, status: str, detail: str):
-        row = self._rows.get(label)
+    def _on_download_status(self, row_id: int, status: str, detail: str):
+        row = self._rows.get(row_id)
         if row:
             row.set_status(status, detail)
 
-    def _on_worker_done(self):
+    def _on_worker_done(self, row_id: int):
         self._active -= 1
+        # Pulizia: rimuovi il riferimento morto dal registry per evitare leak
+        # cumulativo in sessioni lunghe con molti download consecutivi.
+        self._worker_for_row.pop(row_id, None)
         self._process_queue()
         self._update_status_bar()
 

@@ -129,11 +129,25 @@ def _download_ffmpeg(platform_id: str, dest_dir: Path, on_status=None) -> str:
     # Estrai solo 'ffmpeg' dallo ZIP (ignora ffprobe/eventuali extra)
     with zipfile.ZipFile(io.BytesIO(data)) as z:
         names = z.namelist()
-        target = next((n for n in names if n.lower().endswith("ffmpeg") or n.lower() == "ffmpeg.exe"), None)
+        # Match esatto per evitare di estrarre binari arbitrari da uno ZIP malevolo
+        # (es. "ffmpeg_evil" in un pacchetto compromesso).
+        target = next(
+            (n for n in names
+             if n.lower() in ("ffmpeg", "ffmpeg.exe")
+             or n.lower().endswith("/ffmpeg")
+             or n.lower().endswith("/ffmpeg.exe")),
+            None,
+        )
         if not target:
             raise RuntimeError(f"ZIP ffbinaries non contiene ffmpeg (trovati: {names})")
-        with z.open(target) as src, open(dest, "wb") as dst:
+        # Scrittura atomica: estrai in dest.tmp poi os.replace(dest.tmp, dest).
+        # Evita cache ffmpeg semi-scritta se il processo viene interrotto
+        # (Ctrl-C durante la decompressione): in tal caso il file .tmp
+        # orfano non viene riconosciuto come cache valido al prossimo avvio.
+        tmp = dest.with_suffix(dest.suffix + ".tmp")
+        with z.open(target) as src, open(tmp, "wb") as dst:
             shutil.copyfileobj(src, dst)
+        tmp.replace(dest)
 
     if sys.platform != "win32":
         dest.chmod(0o755)

@@ -165,16 +165,14 @@ def download(
     progress_hook=None,
     filename: str | None = None,
     metadata: dict | None = None,
-    info: dict | None = None,
     ffmpeg_location: str | None = None,
 ) -> str:
     """Scarica audio da `url`.
 
-    `info` (se passato) viene usato SOLO come hint iniziale per il titolo; il
-    download vero viene sempre fatto via `extract_info(url, download=True)`
-    per garantire che `extractor_args` (player_client etc.) vengano onorati.
-    yt-dlp non riapplica infatti extractor_args a URL già cached, quindi il
-    riuso di info pre-estratte porta a 403 sui format streaming di YouTube.
+    Il download vero viene sempre effettuato via `extract_info(url, download=True)`
+    per garantire che `extractor_args` (player_client etc.) vengano onorati:
+    yt-dlp non riapplica extractor_args a URL già cached, quindi il riuso di
+    info pre-estratte porterebbe a 403 sui format streaming di YouTube.
     """
     opts = build_ydl_opts(
         output_dir, fmt, filename=filename, progress_hook=progress_hook, ffmpeg_location=ffmpeg_location

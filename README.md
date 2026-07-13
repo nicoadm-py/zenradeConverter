@@ -30,7 +30,7 @@ A PySide6 desktop GUI that downloads audio from YouTube and Spotify links. Spoti
 ```bash
 git clone https://github.com/nicoadm-py/zenradeConverter
 cd zenradeConverter
-pip install -r requirements.txt
+pip install -e .
 ```
 
 ---
@@ -106,7 +106,7 @@ Interfaccia grafica PySide6 per scaricare audio da YouTube e Spotify. Le tracce 
 ```bash
 git clone https://github.com/nicoadm-py/zenradeConverter
 cd zenradeConverter
-pip install -r requirements.txt
+pip install -e .
 ```
 
 ### Utilizzo
