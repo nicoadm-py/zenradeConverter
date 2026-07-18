@@ -151,6 +151,7 @@ def get_info(url: str, ffmpeg_location: str | None = None) -> dict:
         "quiet": True,
         "no_warnings": True,
         "extractor_args": _YT_EXTRACTOR_ARGS,
+        "extract_flat": "in_playlist",
     }
     if ffmpeg_location:
         opts["ffmpeg_location"] = ffmpeg_location

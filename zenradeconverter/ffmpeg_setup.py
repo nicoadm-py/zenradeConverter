@@ -145,6 +145,7 @@ def _download_ffmpeg(platform_id: str, dest_dir: Path, on_status=None) -> str:
         # (Ctrl-C durante la decompressione): in tal caso il file .tmp
         # orfano non viene riconosciuto come cache valido al prossimo avvio.
         tmp = dest.with_suffix(dest.suffix + ".tmp")
+        tmp.unlink(missing_ok=True)
         with z.open(target) as src, open(tmp, "wb") as dst:
             shutil.copyfileobj(src, dst)
         tmp.replace(dest)

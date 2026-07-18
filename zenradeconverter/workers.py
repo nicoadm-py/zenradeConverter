@@ -98,7 +98,7 @@ class YouTubeInfoWorker(QThread):
                 if not e:
                     continue
                 title = (e.get("title") or "Sconosciuto") if isinstance(e, dict) else "Sconosciuto"
-                e_url = e.get("url") or e.get("webpage_url") if isinstance(e, dict) else None
+                e_url = (e.get("url") or e.get("webpage_url")) if isinstance(e, dict) else None
                 if not e_url:
                     continue
                 flat.append((title, e_url))

@@ -154,7 +154,7 @@ class MainWindow(QMainWindow):
         self._ffmpeg_location = ffmpeg_location
         self._rows: dict[int, DownloadRow] = {}
         self._worker_for_row: dict[int, DownloadWorker] = {}
-        self._next_row_id = 0
+        self._row_id_counter = 0
         self._matched_count = 0
         # Pipeline/worker refs: manteniamo un riferimento fortissimo per evitare
         # che Qt faccia garbage-collect del QThread prima del termine.
@@ -245,8 +245,8 @@ class MainWindow(QMainWindow):
         return row
 
     def _next_row_id(self) -> int:
-        rid = self._next_row_id
-        self._next_row_id += 1
+        rid = self._row_id_counter
+        self._row_id_counter += 1
         return rid
 
     def _enqueue(self, job: DownloadJob) -> DownloadRow:
@@ -342,13 +342,14 @@ class MainWindow(QMainWindow):
         worker.info_ready.connect(self._on_yt_info_ready)
         worker.playlist_ready.connect(self._on_yt_playlist_ready)
         worker.error.connect(self._on_yt_info_error)
-        worker.finished.connect(lambda: self._on_info_worker_finished())
+        worker.finished.connect(lambda w=worker: self._on_info_worker_finished(w))
         self._info_worker = worker
         worker.start()
 
-    def _on_info_worker_finished(self):
+    def _on_info_worker_finished(self, w=None):
         # Rilascia il riferimento al QThread (	deferred-delete di Qt)
-        self._info_worker = None
+        if self._info_worker is w:
+            self._info_worker = None
 
     def _on_yt_info_ready(self, info: dict):
         if self._yt_pending is None:
@@ -381,7 +382,7 @@ class MainWindow(QMainWindow):
             rid = self._next_row_id()
             self._enqueue(DownloadJob(
                 rid, title, e_url, fmt, output_dir,
-                filename=title, ffmpeg_location=self._ffmpeg_location,
+                filename=None, ffmpeg_location=self._ffmpeg_location,
             ))
         self._update_status_bar()
 
@@ -409,12 +410,13 @@ class MainWindow(QMainWindow):
         self._pipeline.tracks_found.connect(self._on_tracks_found)
         self._pipeline.search_progress.connect(self._on_search_progress)
         self._pipeline.searches_done.connect(self._on_searches_done)
-        self._pipeline.finished.connect(self._on_spotify_pipeline_finished)
+        self._pipeline.finished.connect(lambda p=self._pipeline: self._on_spotify_pipeline_finished(p))
         self._pipeline.start()
 
-    def _on_spotify_pipeline_finished(self):
+    def _on_spotify_pipeline_finished(self, p=None):
         # Rilascia il riferimento al QThread ( deferred-delete di Qt)
-        self._pipeline = None
+        if self._pipeline is p:
+            self._pipeline = None
 
     def _on_tracks_found(self, songs: list):
         self._status.showMessage(
